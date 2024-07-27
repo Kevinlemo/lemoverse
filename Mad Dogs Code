@@ -1,0 +1,184 @@
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using System.Collections;
+
+public class MadDogsGame : MonoBehaviour
+{
+    public GameObject dogPrefab1;  // Hund für Spieler 1
+    public GameObject dogPrefab2;  // Hund für Spieler 2
+    public GameObject targetPrefab;
+    public Transform dogLaunchPoint1;
+    public Transform dogLaunchPoint2;
+    public float launchPower = 500f;
+    public float targetRadius = 0.5f;
+    public float levelTimeLimit = 90f; // Zeitlimit in Sekunden
+    public float terrainWidth = 10f;
+    public float terrainHeight = 5f;
+    public int maxTargets = 5;
+    
+    private GameObject currentDog1;
+    private GameObject currentDog2;
+    private Vector2 startPosition1;
+    private Vector2 startPosition2;
+    private bool isDragging1 = false;
+    private bool isDragging2 = false;
+    private float timer;
+    private bool gameIsOver = false;
+
+    void Start()
+    {
+        StartNewLevel();
+        StartCoroutine(TimerCountdown());
+    }
+
+    void Update()
+    {
+        if (!gameIsOver)
+        {
+            HandlePlayerInput();
+        }
+    }
+
+    void HandlePlayerInput()
+    {
+        // Player 1 Controls
+        if (currentDog1 != null)
+        {
+            if (isDragging1)
+            {
+                Vector2 currentPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+                currentDog1.transform.position = currentPosition;
+            }
+
+            if (Input.GetMouseButtonUp(0) && isDragging1)
+            {
+                LaunchDog(currentDog1, startPosition1);
+                isDragging1 = false;
+            }
+        }
+
+        // Player 2 Controls
+        if (currentDog2 != null)
+        {
+            if (isDragging2)
+            {
+                Vector2 currentPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+                currentDog2.transform.position = currentPosition;
+            }
+
+            if (Input.GetMouseButtonUp(1) && isDragging2)
+            {
+                LaunchDog(currentDog2, startPosition2);
+                isDragging2 = false;
+            }
+        }
+    }
+
+    void OnMouseDown()
+    {
+        if (currentDog1 != null && Input.GetMouseButton(0))
+        {
+            isDragging1 = true;
+            startPosition1 = currentDog1.transform.position;
+        }
+
+        if (currentDog2 != null && Input.GetMouseButton(1))
+        {
+            isDragging2 = true;
+            startPosition2 = currentDog2.transform.position;
+        }
+    }
+
+    void OnMouseUp()
+    {
+        if (currentDog1 != null && isDragging1)
+        {
+            isDragging1 = false;
+            LaunchDog(currentDog1, startPosition1);
+        }
+
+        if (currentDog2 != null && isDragging2)
+        {
+            isDragging2 = false;
+            LaunchDog(currentDog2, startPosition2);
+        }
+    }
+
+    void LaunchDog(GameObject dog, Vector2 startPosition)
+    {
+        Vector2 direction = startPosition - (Vector2)dog.transform.position;
+        dog.GetComponent<Rigidbody2D>().AddForce(direction * launchPower);
+        dog.GetComponent<Rigidbody2D>().gravityScale = 1;
+        // Spawn a new dog for this player after a delay
+        if (dog == currentDog1)
+        {
+            Invoke("SpawnDogs", 2f); // Delay for player 1
+        }
+        else if (dog == currentDog2)
+        {
+            Invoke("SpawnDogs", 2f); // Delay for player 2
+        }
+    }
+
+    void SpawnDogs()
+    {
+        currentDog1 = Instantiate(dogPrefab1, dogLaunchPoint1.position, Quaternion.identity);
+        currentDog2 = Instantiate(dogPrefab2, dogLaunchPoint2.position, Quaternion.identity);
+        currentDog1.GetComponent<Rigidbody2D>().gravityScale = 0;
+        currentDog2.GetComponent<Rigidbody2D>().gravityScale = 0;
+    }
+
+    void SpawnTarget()
+    {
+        for (int i = 0; i < maxTargets; i++)
+        {
+            Vector2 position = new Vector2(Random.Range(-terrainWidth / 2, terrainWidth / 2), Random.Range(-terrainHeight / 2, terrainHeight / 2));
+            Instantiate(targetPrefab, position, Quaternion.identity);
+        }
+    }
+
+    void StartNewLevel()
+    {
+        if (currentDog1 != null) Destroy(currentDog1);
+        if (currentDog2 != null) Destroy(currentDog2);
+        DestroyExistingTargets();
+        SpawnDogs();
+        SpawnTarget();
+        timer = levelTimeLimit;
+        gameIsOver = false;
+    }
+
+    void DestroyExistingTargets()
+    {
+        foreach (GameObject target in GameObject.FindGameObjectsWithTag("Target"))
+        {
+            Destroy(target);
+        }
+    }
+
+    IEnumerator TimerCountdown()
+    {
+        while (timer > 0)
+        {
+            yield return new WaitForSeconds(1f);
+            timer--;
+        }
+
+        if (!gameIsOver)
+        {
+            EndGame();
+        }
+    }
+
+    void EndGame()
+    {
+        gameIsOver = true;
+        // Restart the level after a short delay
+        Invoke("RestartLevel", 3f);
+    }
+
+    void RestartLevel()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+}

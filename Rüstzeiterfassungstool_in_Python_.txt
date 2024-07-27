@@ -1,0 +1,272 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog, simpledialog
+from datetime import datetime, timedelta
+from openpyxl import Workbook
+from openpyxl.styles import Alignment
+
+class TimeStudyApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Zeitstudien Tool")
+        
+        # Standardliste der verfügbaren Tätigkeiten (alphabetisch sortiert)
+        self.activities = [
+            "Abfallteig wird gewogen", "Anlage grob reinigen", "Anlage ist wieder in Betrieb",
+            # (andere Tätigkeiten...)
+        ]
+        
+        # Alphabetisch sortieren
+        self.activities.sort()
+        
+        # Frame für Eingabe
+        input_frame = ttk.Frame(self.root, padding="20")
+        input_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Label und Eingabefelder für Rüstvorgang/Rezept, Mitarbeiter und Anlagenleiter
+        ttk.Label(input_frame, text="Rüstvorgang/Rezept:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        self.recipe_entry = ttk.Entry(input_frame, width=50)
+        self.recipe_entry.grid(row=0, column=1, padx=5, pady=5)
+        
+        ttk.Label(input_frame, text="Anzahl Mitarbeiter:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
+        self.num_workers_entry = ttk.Entry(input_frame, width=10)
+        self.num_workers_entry.grid(row=1, column=1, padx=5, pady=5)
+        
+        ttk.Label(input_frame, text="Name Anlagenleiter:").grid(row=2, column=0, padx=5, pady=5, sticky=tk.W)
+        self.supervisor_entry = ttk.Entry(input_frame, width=50)
+        self.supervisor_entry.grid(row=2, column=1, padx=5, pady=5)
+        
+        # Label und Dropdown-Menü für Tätigkeit
+        ttk.Label(input_frame, text="Tätigkeit:").grid(row=3, column=0, padx=5, pady=5, sticky=tk.W)
+        self.activity_combobox = ttk.Combobox(input_frame, values=self.activities, state="readonly", width=50)
+        self.activity_combobox.grid(row=3, column=1, padx=5, pady=5, sticky=tk.W)
+        self.activity_combobox.current(0)  # Standardwert
+        
+        # New Fields with buttons for recording time
+        ttk.Label(input_frame, text="Letztes Gutstück:").grid(row=4, column=0, padx=5, pady=5, sticky=tk.W)
+        self.last_good_piece_entry = ttk.Entry(input_frame, width=40)
+        self.last_good_piece_entry.grid(row=4, column=1, padx=5, pady=5, sticky=tk.W)
+        ttk.Button(input_frame, text="Zeit erfassen", command=lambda: self.record_milestone_time(self.last_good_piece_entry)).grid(row=4, column=2, padx=5, pady=5, sticky=tk.W)
+        
+        ttk.Label(input_frame, text="Erstes Gutstück:").grid(row=5, column=0, padx=5, pady=5, sticky=tk.W)
+        self.first_good_piece_entry = ttk.Entry(input_frame, width=40)
+        self.first_good_piece_entry.grid(row=5, column=1, padx=5, pady=5, sticky=tk.W)
+        ttk.Button(input_frame, text="Zeit erfassen", command=lambda: self.record_milestone_time(self.first_good_piece_entry)).grid(row=5, column=2, padx=5, pady=5, sticky=tk.W)
+        
+        ttk.Label(input_frame, text="Beginn der Serienproduktion:").grid(row=6, column=0, padx=5, pady=5, sticky=tk.W)
+        self.start_of_production_entry = ttk.Entry(input_frame, width=40)
+        self.start_of_production_entry.grid(row=6, column=1, padx=5, pady=5, sticky=tk.W)
+        ttk.Button(input_frame, text="Zeit erfassen", command=lambda: self.record_milestone_time(self.start_of_production_entry)).grid(row=6, column=2, padx=5, pady=5, sticky=tk.W)
+        
+        # Button zur Startzeit-Aufzeichnung
+        ttk.Button(input_frame, text="Startzeit aufzeichnen", command=self.record_start_time).grid(row=7, column=0, padx=5, pady=10)
+        
+        # Button zur Endzeit-Aufzeichnung
+        ttk.Button(input_frame, text="Endzeit aufzeichnen", command=self.record_end_time).grid(row=7, column=1, padx=5, pady=10)
+        
+        # Button zur Hinzufügung einer neuen Tätigkeit
+        ttk.Button(input_frame, text="Neue Tätigkeit hinzufügen", command=self.add_new_activity).grid(row=3, column=2, padx=5, pady=10, sticky=tk.W)
+        
+        # Liste zur Anzeige der aufgezeichneten Zeiten
+        self.time_listbox = tk.Listbox(input_frame, height=10, width=70)
+        self.time_listbox.grid(row=8, columnspan=3, padx=5, pady=5)
+        
+        # Button zur Berechnung der Gesamtzeit
+        ttk.Button(input_frame, text="Gesamtzeit berechnen", command=self.calculate_total_time).grid(row=9, columnspan=3, padx=5, pady=10)
+        
+        # Label zur Anzeige der Gesamtzeit
+        self.total_time_label = ttk.Label(input_frame, text="Gesamtzeit der Rüstschritte: ")
+        self.total_time_label.grid(row=10, columnspan=3, padx=5, pady=5, sticky=tk.W)
+        
+        # Button zum Speichern in Excel
+        ttk.Button(input_frame, text="Rüstzeiten speichern", command=self.save_to_excel).grid(row=11, columnspan=3, padx=5, pady=10)
+        
+        # Button zum Öffnen des zweiten Fensters
+        ttk.Button(input_frame, text="Rüstprozesse verwalten", command=self.open_management_window).grid(row=12, columnspan=3, padx=5, pady=10)
+        
+        # Variablen für die Zeitdaten
+        self.times = []
+        self.current_task = None
+        self.start_time = None
+        self.end_time = None
+        self.total_ruestzeit_seconds = 0
+
+        # List to store saved processes
+        self.saved_processes = []
+    
+    def record_start_time(self):
+        if self.current_task:
+            messagebox.showwarning("Warnung", "Bitte beenden Sie zuerst die aktuelle Tätigkeit.")
+            return
+        
+        self.start_time = datetime.now()
+        self.current_task = self.activity_combobox.get()
+        self.times.append((self.current_task, self.start_time))
+        self.time_listbox.insert(tk.END, f"{self.current_task}: Start - {self.start_time.strftime('%H:%M:%S')}")
+    
+    def record_end_time(self):
+        if not self.current_task:
+            messagebox.showwarning("Warnung", "Keine laufende Tätigkeit zum Beenden.")
+            return
+        
+        self.end_time = datetime.now()
+        activity, start_time = self.times[-1]  # Get the last recorded activity and start time
+        duration = self.end_time - start_time
+        self.total_ruestzeit_seconds += duration.total_seconds()
+        self.time_listbox.insert(tk.END, f"{activity}: End - {self.end_time.strftime('%H:%M:%S')}")
+        self.current_task = None
+        self.start_time = None
+    
+    def record_milestone_time(self, entry_field):
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        entry_field.delete(0, tk.END)
+        entry_field.insert(0, timestamp)
+    
+    def add_new_activity(self):
+        new_activity = simpledialog.askstring("Neue Tätigkeit hinzufügen", "Geben Sie den Namen der neuen Tätigkeit ein:")
+        if new_activity:
+            self.activities.append(new_activity)
+            self.activities.sort()
+            self.activity_combobox['values'] = self.activities
+            self.activity_combobox.set(new_activity)
+            messagebox.showinfo("Erfolg", f"Die neue Tätigkeit '{new_activity}' wurde hinzugefügt.")
+    
+    def calculate_total_time(self):
+        total_time_seconds = self.total_ruestzeit_seconds
+        
+        total_time_hours = total_time_seconds // 3600
+        total_time_minutes = (total_time_seconds % 3600) // 60
+        total_time_seconds = total_time_seconds % 60
+        
+        total_time_str = f"Gesamtzeit der Rüstschritte: {total_time_hours:.0f} Stunden, {total_time_minutes:.0f} Minuten und {total_time_seconds:.0f} Sekunden"
+        self.total_time_label.config(text=total_time_str)
+    
+    def save_to_excel(self):
+        if not self.times:
+            messagebox.showwarning("Warnung", "Keine Rüstzeiten zum Speichern vorhanden.")
+            return
+        
+        try:
+            # Create a new Workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Rüstzeiten"
+            
+            # Define headers
+            headers = [
+                "Rüsten/Rezept:", "", "Datum:", "", "Vorgabezeit:", "",
+                "Anzahl Mitarbeiter:", "", "Name Anlagenleiter:", ""
+            ]
+            ws.append(headers)
+            
+            # Define the recipe, workers, and supervisor entries
+            data = [
+                self.recipe_entry.get(), "", datetime.now().strftime('%Y-%m-%d'), "", "", "",
+                self.num_workers_entry.get(), "", self.supervisor_entry.get(), ""
+            ]
+            ws.append(data)
+            
+            # Define the milestone times
+            milestone_headers = [
+                "Letztes Gutstück:", self.last_good_piece_entry.get(),
+                "Erstes Gutstück:", self.first_good_piece_entry.get(),
+                "Beginn der Serienproduktion:", self.start_of_production_entry.get()
+            ]
+            ws.append(milestone_headers)
+            
+            # Leave a blank line
+            ws.append([""])
+            
+            # Define the time tracking table headers
+            time_headers = ["Tätigkeit", "Startzeit", "Endzeit"]
+            ws.append(time_headers)
+            
+            # Populate the table with times
+            for i in range(0, len(self.times), 2):
+                activity = self.times[i][0]
+                start_time = self.times[i][1].strftime('%Y-%m-%d %H:%M:%S')
+                end_time = self.times[i + 1][1].strftime('%Y-%m-%d %H:%M:%S') if i + 1 < len(self.times) else ""
+                ws.append([activity, start_time, end_time])
+            
+            # Save the workbook to a file
+            file_path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
+            if file_path:
+                wb.save(file_path)
+                messagebox.showinfo("Erfolg", f"Rüstzeiten wurden erfolgreich in {file_path} gespeichert.")
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Beim Speichern der Datei ist ein Fehler aufgetreten: {e}")
+    
+    def open_management_window(self):
+        # Create a new top-level window
+        management_window = tk.Toplevel(self.root)
+        management_window.title("Rüstprozesse verwalten")
+        
+        # Frame für das Management-Fenster
+        management_frame = ttk.Frame(management_window, padding="20")
+        management_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Listbox zur Anzeige der gespeicherten Rüstprozesse
+        self.saved_processes_listbox = tk.Listbox(management_frame, height=15, width=50)
+        self.saved_processes_listbox.pack(padx=10, pady=10)
+        
+        # Buttons zum Speichern und Vergleichen
+        ttk.Button(management_frame, text="Rüstprozess speichern", command=self.save_current_process).pack(padx=10, pady=5)
+        ttk.Button(management_frame, text="Rüstprozesse vergleichen", command=self.compare_processes).pack(padx=10, pady=5)
+        
+        # Load the saved processes into the listbox
+        self.load_saved_processes()
+    
+    def save_current_process(self):
+        current_process = {
+            "recipe": self.recipe_entry.get(),
+            "num_workers": self.num_workers_entry.get(),
+            "supervisor": self.supervisor_entry.get(),
+            "last_good_piece": self.last_good_piece_entry.get(),
+            "first_good_piece": self.first_good_piece_entry.get(),
+            "start_of_production": self.start_of_production_entry.get(),
+            "times": self.times
+        }
+        self.saved_processes.append(current_process)
+        self.update_saved_processes_listbox()
+    
+    def load_saved_processes(self):
+        for process in self.saved_processes:
+            process_str = f"Rüstvorgang: {process['recipe']}, Mitarbeiter: {process['num_workers']}, Anlagenleiter: {process['supervisor']}"
+            self.saved_processes_listbox.insert(tk.END, process_str)
+    
+    def update_saved_processes_listbox(self):
+        self.saved_processes_listbox.delete(0, tk.END)
+        self.load_saved_processes()
+    
+    def compare_processes(self):
+        selected_indices = self.saved_processes_listbox.curselection()
+        if len(selected_indices) != 2:
+            messagebox.showwarning("Warnung", "Bitte wählen Sie genau zwei Rüstprozesse zum Vergleichen aus.")
+            return
+        
+        process1 = self.saved_processes[selected_indices[0]]
+        process2 = self.saved_processes[selected_indices[1]]
+        
+        comparison_window = tk.Toplevel(self.root)
+        comparison_window.title("Vergleich der Rüstprozesse")
+        
+        comparison_frame = ttk.Frame(comparison_window, padding="20")
+        comparison_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(comparison_frame, text=f"Vergleich von '{process1['recipe']}' und '{process2['recipe']}'").pack(padx=10, pady=10)
+        
+        def format_process(process):
+            return (f"Rüstvorgang: {process['recipe']}\n"
+                    f"Anzahl Mitarbeiter: {process['num_workers']}\n"
+                    f"Name Anlagenleiter: {process['supervisor']}\n"
+                    f"Letztes Gutstück: {process['last_good_piece']}\n"
+                    f"Erstes Gutstück: {process['first_good_piece']}\n"
+                    f"Beginn der Serienproduktion: {process['start_of_production']}\n")
+        
+        ttk.Label(comparison_frame, text=format_process(process1)).pack(padx=10, pady=5)
+        ttk.Label(comparison_frame, text=format_process(process2)).pack(padx=10, pady=5)
+
+# Start der Anwendung
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = TimeStudyApp(root)
+    root.mainloop()

@@ -1,0 +1,17 @@
+Klimadatenanalyse
+ Beschreibung
+Dieses Projekt beschäftigt sich mit der Analyse von Klimadaten im Bundesrechenzentrum in Wien. Dabei wurden verschiedene Python-Bibliotheken wie Pandas, Matplotlib, NumPy und Seaborn verwendet. TensorFlow wurde für Prognosen eingesetzt.
+
+## Struktur
+- **data/**: Enthält die Rohdaten und vorbereiteten Datensätze.
+- **notebooks/**: Jupyter-Notebooks für Datenanalyse und -visualisierung.
+- **src/**: Python-Skripte zur Datenverarbeitung.
+- **results/**: Ergebnisse der Analyse und Visualisierungen.
+
+## Anforderungen
+- Python 3.x
+- Pandas
+- Matplotlib
+- NumPy
+- Seaborn
+- TensorFlow

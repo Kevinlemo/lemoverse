@@ -1,0 +1,535 @@
+import openmeteo_requests
+import requests_cache
+import pandas as pd
+from retry_requests import retry
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from sklearn.linear_model import LinearRegression
+
+# Setup the Open-Meteo API client with cache and retry on error
+cache_session = requests_cache.CachedSession('.cache', expire_after=-1)
+retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+openmeteo = openmeteo_requests.Client(session=retry_session)
+
+# Koordinaten für Stuhlegg
+coordinates_stuhlegg = {'latitude': 47.5742, 'longitude': 15.7903}
+
+# Funktion zur Abfrage von Daten
+def fetch_data(latitude, longitude, start_date, end_date, daily_params, hourly_params=None):
+    url = "https://archive-api.open-meteo.com/v1/archive"
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "start_date": start_date,
+        "end_date": end_date,
+        "daily": daily_params
+    }
+    if hourly_params:
+        params["hourly"] = hourly_params
+
+    responses = openmeteo.weather_api(url, params=params)
+    return responses[0]
+
+# Daten für die tägliche Schneefall-Summe abfragen
+response_daily_stuhlegg = fetch_data(
+    latitude=coordinates_stuhlegg['latitude'],
+    longitude=coordinates_stuhlegg['longitude'],
+    start_date="1980-01-01",
+    end_date="2024-01-01",
+    daily_params="snowfall_sum"
+)
+
+# Daten für die stündliche Schneetiefe abfragen
+response_hourly_stuhlegg = fetch_data(
+    latitude=coordinates_stuhlegg['latitude'],
+    longitude=coordinates_stuhlegg['longitude'],
+    start_date="1980-01-01",
+    end_date="2024-01-01",
+    daily_params="snowfall_sum",
+    hourly_params="snow_depth"
+)
+
+# Verarbeiten der Daten für Stuhlegg
+# Schneefall
+daily_stuhlegg = response_daily_stuhlegg.Daily()
+daily_snowfall_sum_stuhlegg = daily_stuhlegg.Variables(0).ValuesAsNumpy()
+
+daily_data_stuhlegg = {
+    "date": pd.date_range(
+        start=pd.to_datetime(daily_stuhlegg.Time(), unit="s", utc=True),
+        end=pd.to_datetime(daily_stuhlegg.TimeEnd(), unit="s", utc=True),
+        freq=pd.Timedelta(seconds=daily_stuhlegg.Interval()),
+        inclusive="left"
+    ),
+    "snowfall_sum": daily_snowfall_sum_stuhlegg
+}
+daily_dataframe_stuhlegg = pd.DataFrame(data=daily_data_stuhlegg)
+
+# Schneetiefe
+hourly_stuhlegg = response_hourly_stuhlegg.Hourly()
+hourly_snow_depth_stuhlegg = hourly_stuhlegg.Variables(0).ValuesAsNumpy()
+
+# Umwandlung von Metern in Zentimeter
+hourly_snow_depth_stuhlegg_cm = hourly_snow_depth_stuhlegg * 100
+
+hourly_data_stuhlegg = {
+    "date": pd.date_range(
+        start=pd.to_datetime(hourly_stuhlegg.Time(), unit="s", utc=True),
+        end=pd.to_datetime(hourly_stuhlegg.TimeEnd(), unit="s", utc=True),
+        freq=pd.Timedelta(seconds=hourly_stuhlegg.Interval()),
+        inclusive="left"
+    ),
+    "snow_depth_cm": hourly_snow_depth_stuhlegg_cm
+}
+hourly_dataframe_stuhlegg = pd.DataFrame(data=hourly_data_stuhlegg)
+
+# Resample und Filtern für Stuhlegg
+daily_dataframe_stuhlegg.set_index('date', inplace=True)
+annual_snowfall_sum_stuhlegg = daily_dataframe_stuhlegg.resample("Y").sum()
+annual_snowfall_avg_stuhlegg = annual_snowfall_sum_stuhlegg.mean(axis=0)
+wintermonths_snowfall_stuhlegg = annual_snowfall_sum_stuhlegg[annual_snowfall_sum_stuhlegg.index.month.isin([12, 1, 2, 3])]
+
+hourly_dataframe_stuhlegg.set_index('date', inplace=True)
+annual_snow_depth_stuhlegg = hourly_dataframe_stuhlegg.resample("Y").mean()
+annual_snow_depth_avg_stuhlegg = annual_snow_depth_stuhlegg.mean(axis=0)
+wintermonths_snow_depth_stuhlegg = annual_snow_depth_stuhlegg[annual_snow_depth_stuhlegg.index.month.isin([12, 1, 2, 3])]
+
+# Daten zusammenführen und filtern
+annual_data = pd.DataFrame({
+    'year': annual_snowfall_sum_stuhlegg.index.year,
+    'snowfall_sum': annual_snowfall_sum_stuhlegg['snowfall_sum'].values,
+    'snow_depth_avg': annual_snow_depth_stuhlegg['snow_depth_cm'].values
+})
+annual_data = annual_data[(annual_data['year'] >= 1980) & (annual_data['year'] <= 2020)]
+
+# Plotting
+plt.figure(figsize=(14, 7))
+plt.plot(annual_data['year'], annual_data['snowfall_sum'], label='Annual Snowfall Sum (cm)', color='blue', marker='o')
+plt.plot(annual_data['year'], annual_data['snow_depth_avg'], label='Annual Snow Depth Average (cm)', color='green', marker='s')
+plt.xlabel('Year')
+plt.ylabel('Measurement (cm)')
+plt.title('Annual Snowfall Sum and Snow Depth Average (1980-2020)')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+
+
+
+
+# Setup the Open-Meteo API client with cache and retry on error
+cache_session = requests_cache.CachedSession('.cache', expire_after=-1)
+retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+openmeteo = openmeteo_requests.Client(session=retry_session)
+
+# Koordinaten für Stuhlegg
+coordinates_stuhlegg = {'latitude': 47.5742, 'longitude': 15.7903}
+
+# Funktion zur Abfrage von Daten
+def fetch_data(latitude, longitude, start_date, end_date, daily_params, hourly_params=None):
+    url = "https://archive-api.open-meteo.com/v1/archive"
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "start_date": start_date,
+        "end_date": end_date,
+        "daily": daily_params
+    }
+    if hourly_params:
+        params["hourly"] = hourly_params
+
+    responses = openmeteo.weather_api(url, params=params)
+    return responses[0]
+
+# Daten für die tägliche Schneefall-Summe abfragen
+response_daily_stuhlegg = fetch_data(
+    latitude=coordinates_stuhlegg['latitude'],
+    longitude=coordinates_stuhlegg['longitude'],
+    start_date="1980-01-01",
+    end_date="2024-01-01",
+    daily_params="snowfall_sum"
+)
+
+# Daten für die stündliche Schneetiefe abfragen
+response_hourly_stuhlegg = fetch_data(
+    latitude=coordinates_stuhlegg['latitude'],
+    longitude=coordinates_stuhlegg['longitude'],
+    start_date="1980-01-01",
+    end_date="2024-01-01",
+    daily_params="snowfall_sum",
+    hourly_params="snow_depth"
+)
+
+# Verarbeiten der Daten für Stuhlegg
+# Schneefall
+daily_stuhlegg = response_daily_stuhlegg.Daily()
+daily_snowfall_sum_stuhlegg = daily_stuhlegg.Variables(0).ValuesAsNumpy()
+
+daily_data_stuhlegg = {
+    "date": pd.date_range(
+        start=pd.to_datetime(daily_stuhlegg.Time(), unit="s", utc=True),
+        end=pd.to_datetime(daily_stuhlegg.TimeEnd(), unit="s", utc=True),
+        freq=pd.Timedelta(seconds=daily_stuhlegg.Interval()),
+        inclusive="left"
+    ),
+    "snowfall_sum": daily_snowfall_sum_stuhlegg
+}
+daily_dataframe_stuhlegg = pd.DataFrame(data=daily_data_stuhlegg)
+
+# Schneetiefe
+hourly_stuhlegg = response_hourly_stuhlegg.Hourly()
+hourly_snow_depth_stuhlegg = hourly_stuhlegg.Variables(0).ValuesAsNumpy()
+
+# Umwandlung von Metern in Zentimeter
+hourly_snow_depth_stuhlegg_cm = hourly_snow_depth_stuhlegg * 100
+
+hourly_data_stuhlegg = {
+    "date": pd.date_range(
+        start=pd.to_datetime(hourly_stuhlegg.Time(), unit="s", utc=True),
+        end=pd.to_datetime(hourly_stuhlegg.TimeEnd(), unit="s", utc=True),
+        freq=pd.Timedelta(seconds=hourly_stuhlegg.Interval()),
+        inclusive="left"
+    ),
+    "snow_depth_cm": hourly_snow_depth_stuhlegg_cm
+}
+hourly_dataframe_stuhlegg = pd.DataFrame(data=hourly_data_stuhlegg)
+
+
+
+
+
+# Resample und Filtern für Stuhlegg
+daily_dataframe_stuhlegg.set_index('date', inplace=True)
+monthly_snowfall_sum_stuhlegg = daily_dataframe_stuhlegg.resample("M").sum()
+wintermonths_snowfall_stuhlegg = monthly_snowfall_sum_stuhlegg[monthly_snowfall_sum_stuhlegg.index.month.isin([12, 1, 2, 3])]
+
+hourly_dataframe_stuhlegg.set_index('date', inplace=True)
+daily_snow_depth_stuhlegg = hourly_dataframe_stuhlegg.resample("D").mean()
+monthly_snow_depth_stuhlegg = hourly_dataframe_stuhlegg.resample("M").mean()
+wintermonths_snow_depth_stuhlegg = monthly_snow_depth_stuhlegg[monthly_snow_depth_stuhlegg.index.month.isin([12, 1, 2, 3])]
+
+# Plotting Cycle Plots für Stuhlegg
+fig, axs = plt.subplots(2, 4, figsize=(18, 10), sharex='col', sharey='row')
+
+# Schnee-Fall Cycle Plots als Balkenplots
+months = ["December", "January", "February", "March"]
+colors = ['b', 'g', 'r', 'c']
+for i, month in enumerate([12, 1, 2, 3]):
+    ax = axs[0, i]
+    month_data = wintermonths_snowfall_stuhlegg[wintermonths_snowfall_stuhlegg.index.month == month]
+    ax.bar(month_data.index.year, month_data['snowfall_sum'], color=colors[i])
+    ax.set_title(f'Snowfall - {months[i]}')
+    ax.set_xlabel('Year')
+    ax.set_ylabel('Snowfall Sum (cm)')
+    ax.grid(True)
+    ax.set_xticks(range(wintermonths_snowfall_stuhlegg.index.year.min(), wintermonths_snowfall_stuhlegg.index.year.max() + 1, 5))  # Adjust x-ticks
+
+# Schnee-Belag Cycle Plots als Balkenplots
+for i, month in enumerate([12, 1, 2, 3]):
+    ax = axs[1, i]
+    month_data = wintermonths_snow_depth_stuhlegg[wintermonths_snow_depth_stuhlegg.index.month == month]
+    ax.bar(month_data.index.year, month_data['snow_depth_cm'], color=colors[i])
+    ax.set_title(f'Snow Depth - {months[i]}')
+    ax.set_xlabel('Year')
+    ax.set_ylabel('Snow Depth (cm)')
+    ax.grid(True)
+    ax.set_xticks(range(wintermonths_snow_depth_stuhlegg.index.year.min(), wintermonths_snow_depth_stuhlegg.index.year.max() + 1, 5))  # Adjust x-ticks
+
+plt.tight_layout()
+plt.show()
+
+# Berechnung der Korrelation zwischen Schneefallmenge und Schneetiefe
+# Die Daten auf denselben Zeitraum beschränken
+common_index = wintermonths_snowfall_stuhlegg.index.intersection(wintermonths_snow_depth_stuhlegg.index)
+
+snowfall_common = wintermonths_snowfall_stuhlegg.loc[common_index]
+snow_depth_common = wintermonths_snow_depth_stuhlegg.loc[common_index]
+
+# Korrelation berechnen
+correlation = snowfall_common['snowfall_sum'].corr(snow_depth_common['snow_depth_cm'])
+print(f"Korrelationskoeffizient zwischen Schneefallmenge und Schneetiefe: {correlation:.2f}")
+
+# Lineare Regression berechnen
+X = snowfall_common['snowfall_sum'].values.reshape(-1, 1)  # Feature Matrix
+y = snow_depth_common['snow_depth_cm'].values  # Target Vector
+
+regressor = LinearRegression()
+regressor.fit(X, y)
+
+# Vorhersagen erstellen
+y_pred = regressor.predict(X)
+
+# Plotting der Korrelation mit Regressionslinie
+plt.figure(figsize=(10, 6))
+plt.scatter(snowfall_common['snowfall_sum'], snow_depth_common['snow_depth_cm'], color='blue', alpha=0.7, label='Datenpunkte')
+plt.plot(snowfall_common['snowfall_sum'], y_pred, color='red', linestyle='--', label='Regressionslinie')
+plt.title('Korrelation zwischen Schneefallmenge und Schneetiefe')
+plt.xlabel('Schneefall Summe (cm)')
+plt.ylabel('Schneetiefe (cm)')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Vorbereitung der Daten für die Matrix Plots
+filtered_years = [year for year in snowfall_matrix['year'].unique() if year % 10 == 0]
+
+# Erstellen der Datenmatrix für Schneefall
+snowfall_matrix = wintermonths_snowfall_stuhlegg.reset_index()
+snowfall_matrix['year'] = snowfall_matrix['date'].dt.year
+snowfall_matrix['month'] = snowfall_matrix['date'].dt.month
+filtered_snowfall_matrix = snowfall_matrix[snowfall_matrix['year'].isin(filtered_years)]
+snowfall_pivot = filtered_snowfall_matrix.pivot_table(
+    index='month',
+    columns='year',
+    values='snowfall_sum',
+    fill_value=0
+)
+
+# Erstellen der Datenmatrix für Schneetiefe
+snow_depth_matrix = wintermonths_snow_depth_stuhlegg.reset_index()
+snow_depth_matrix['year'] = snow_depth_matrix['date'].dt.year
+snow_depth_matrix['month'] = snow_depth_matrix['date'].dt.month
+filtered_snow_depth_matrix = snow_depth_matrix[snow_depth_matrix['year'].isin(filtered_years)]
+snow_depth_pivot = filtered_snow_depth_matrix.pivot_table(
+    index='month',
+    columns='year',
+    values='snow_depth_cm',
+    fill_value=0
+)
+
+# Matrix Plot für Schneefall
+plt.figure(figsize=(14, 7))
+
+# Sortiere die Jahre nach den Werten für Schneefall absteigend
+sorted_years_snowfall = snowfall_pivot.mean(axis=0).sort_values(ascending=False).index
+sorted_snowfall_pivot = snowfall_pivot[sorted_years_snowfall]
+
+plt.subplot(1, 2, 1)
+sns.heatmap(sorted_snowfall_pivot, cmap="Blues", annot=True, fmt=".1f", cbar_kws={'label': 'Snowfall Sum (cm)'})
+plt.title('Monthly Snowfall Sum Matrix Plot')
+plt.xlabel('Year')
+plt.ylabel('Month')
+plt.xticks(ticks=np.arange(len(sorted_years_snowfall)), labels=sorted_years_snowfall, rotation=45)
+
+# Sortiere die Jahre nach den Werten für Schneetiefe absteigend
+sorted_years_snow_depth = snow_depth_pivot.mean(axis=0).sort_values(ascending=False).index
+sorted_snow_depth_pivot = snow_depth_pivot[sorted_years_snow_depth]
+
+plt.subplot(1, 2, 2)
+sns.heatmap(sorted_snow_depth_pivot, cmap="BuPu", annot=True, fmt=".1f", cbar_kws={'label': 'Snow Depth (cm)'})
+plt.title('Monthly Snow Depth Matrix Plot')
+plt.xlabel('Year')
+plt.ylabel('Month')
+plt.xticks(ticks=np.arange(len(sorted_years_snow_depth)), labels=sorted_years_snow_depth, rotation=45)
+
+plt.tight_layout()
+plt.show()
+
+
+# Setup the Open-Meteo API client with cache and retry on error
+cache_session = requests_cache.CachedSession('.cache', expire_after=-1)
+retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+openmeteo = openmeteo_requests.Client(session=retry_session)
+
+# Define the API request parameters
+url = "https://archive-api.open-meteo.com/v1/archive"
+params = {
+    "latitude": 47.5742,
+    "longitude": 15.7903,
+    "start_date": "1980-01-01",
+    "end_date": "2020-03-03",
+    "hourly": "snowfall",
+    "daily": ["temperature_2m_mean", "snowfall_sum"]
+}
+
+# Fetch data from Open-Meteo API
+responses = openmeteo.weather_api(url, params=params)
+
+# Process the response
+response = responses[0]
+
+# Process daily data
+daily = response.Daily()
+daily_temperature_2m_mean = daily.Variables(0).ValuesAsNumpy()
+daily_snowfall_sum = daily.Variables(1).ValuesAsNumpy()
+
+daily_data = {
+    "date": pd.date_range(
+        start=pd.to_datetime(daily.Time(), unit="s", utc=True),
+        end=pd.to_datetime(daily.TimeEnd(), unit="s", utc=True),
+        freq=pd.Timedelta(seconds=daily.Interval()),
+        inclusive="left"
+    ),
+    "temperature_2m_mean": daily_temperature_2m_mean,
+    "snowfall_sum": daily_snowfall_sum
+}
+
+daily_dataframe = pd.DataFrame(data=daily_data)
+
+# Extract year and month
+daily_dataframe['year'] = daily_dataframe['date'].dt.year
+daily_dataframe['month'] = daily_dataframe['date'].dt.month
+
+# Filter winter months (December, January, February)
+winter_months = daily_dataframe[daily_dataframe['month'].isin([12, 1, 2])].copy()
+
+# Calculate decade and average temperatures for each decade and month
+winter_months['decade'] = (winter_months['year'] // 10) * 10
+winter_decade_avg_temps = winter_months.groupby(['decade', 'month'])['temperature_2m_mean'].mean().reset_index()
+
+# Pivot data for heatmap
+heatmap_data = winter_decade_avg_temps.pivot(index="decade", columns="month", values="temperature_2m_mean")
+
+# Plot heatmap
+plt.figure(figsize=(14, 10))
+sns.set(style="whitegrid", font_scale=2.2)
+
+heatmap = sns.heatmap(
+    heatmap_data,
+    annot=True,
+    fmt=".1f",
+    cmap="coolwarm",
+    linewidths=0.5,
+    linecolor='black',
+    cbar_kws={'label': 'Mean Temperature (°C)', 'shrink': 0.8},
+    annot_kws={"size": 14, "weight": "bold", "color": "white"}  # Größere Zahlen in Weiß
+)
+
+heatmap.set_title('Average Winter Temperatures by Decade', fontsize=20)
+heatmap.set_xlabel('Month', fontsize=16)
+heatmap.set_ylabel('Decade', fontsize=16)
+heatmap.set_xticklabels(['December', 'January', 'February'], rotation=45)
+heatmap.set_yticklabels(heatmap.get_yticklabels(), rotation=0)
+
+plt.tight_layout()
+plt.show()
+
+
+
+
+
+pip install scikit-learn
+
+import requests_cache
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+from sklearn.linear_model import LinearRegression
+from datetime import datetime
+
+# Funktion zum Einrichten einer Session mit Cache und Retry
+def retry(session, retries=5, backoff_factor=0.2):
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=(500, 502, 504)
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+# Setup the Open-Meteo API client with cache and retry on error
+cache_session = requests_cache.CachedSession('.cache', expire_after=-1)
+retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+
+# API-Endpunkt
+url = "https://archive-api.open-meteo.com/v1/archive"
+params = {
+    "latitude": 47.5742,
+    "longitude": 15.7903,
+    "start_date": "1980-01-01",
+    "end_date": "2020-12-31",
+    "hourly": "snow_depth",
+    "timezone": "auto"
+}
+
+# API-Anfrage senden
+response = retry_session.get(url, params=params)
+data = response.json()
+
+# Daten in ein DataFrame laden
+df = pd.DataFrame({
+    "time": pd.to_datetime(data["hourly"]["time"]),
+    "snow_depth": data["hourly"]["snow_depth"]
+})
+
+# Datumsformat anpassen
+df['time'] = pd.to_datetime(df['time'])
+
+# Monate Dezember bis März filtern
+df_filtered = df[df['time'].dt.month.isin([12, 1, 2, 3])].copy()
+
+# Täglichen Durchschnitt der Schneetiefe berechnen
+df_filtered.loc[:,'date'] = df_filtered['time'].dt.date
+daily_avg_snow_depth = df_filtered.groupby('date')['snow_depth'].mean().reset_index()
+
+min_snow_depth: float = 0.35
+
+# Überprüfen, ob der tägliche Durchschnitt der Schneetiefe größer als 35 cm ist
+daily_avg_snow_depth['exceeds_35cm'] = daily_avg_snow_depth['snow_depth'] > min_snow_depth
+daily_avg_snow_depth['subceeded_35cm'] = daily_avg_snow_depth['snow_depth'] <= min_snow_depth
+
+daily_avg_snow_depth['year'] = pd.to_datetime(daily_avg_snow_depth['date']).dt.year
+days_above_35cm_per_year = daily_avg_snow_depth[daily_avg_snow_depth['exceeds_35cm']].groupby('year').size().reset_index(name='days_above_35cm')
+
+days_below_35cm_per_year = daily_avg_snow_depth[daily_avg_snow_depth['subceeded_35cm']].groupby('year').size().reset_index(name='days_below_35cm')
+
+
+print(days_above_35cm_per_year)
+print(days_below_35cm_per_year)
+
+
+# Ergebnis anzeigen
+print(daily_avg_snow_depth[daily_avg_snow_depth['exceeds_35cm']])
+print(daily_avg_snow_depth[daily_avg_snow_depth['subceeded_35cm']])
+
+days_per_year = pd.merge(days_above_35cm_per_year, days_below_35cm_per_year, on='year', how='outer').fillna(0)
+
+#Lineare Regression oder Durschnitt der letzten Jahre von Tagen über 35 oder unter 35
+
+# Balkendiagramm erstellen
+plt.figure(figsize=(12, 6))
+plt.bar(days_per_year['year'], days_per_year['days_below_35cm'], label='Days with Snow Depth <= 35 cm', color='red')
+plt.bar(days_per_year['year'], days_per_year['days_above_35cm'], bottom=days_per_year['days_below_35cm'], label='Days with Snow Depth > 35 cm', color='skyblue')
+plt.xlabel('Year')
+plt.ylabel('Number of Days')
+plt.title('Number of Days per Year with Snow Depth Greater than and Less Than or Equal to 35 cm  (January, February, March, December)')
+plt.xticks(rotation=45)
+plt.grid(axis='y', linestyle='--', linewidth=0.7)
+plt.tight_layout()
+plt.legend(loc="upper right")
+plt.show()
+
+
+# Lineare Regressionen
+X = days_per_year['year'].values.reshape(-1, 1)
+
+# Regression für Tage über 35 cm
+y_above = days_per_year['days_above_35cm'].values
+reg_above = LinearRegression().fit(X, y_above)
+y_above_pred = reg_above.predict(X)
+
+# Regression für Tage unter 35 cm
+y_below = days_per_year['days_below_35cm'].values
+reg_below = LinearRegression().fit(X, y_below)
+y_below_pred = reg_below.predict(X)
+
+# Lineare Regressionen plotten
+plt.figure(figsize=(12, 6))
+plt.scatter(days_per_year['year'], days_per_year['days_above_35cm'], color='blue', label='Days with Snow Depth > 35 cm')
+plt.scatter(days_per_year['year'], days_per_year['days_below_35cm'], color='red', label='Days with Snow Depth <= 35 cm')
+plt.plot(days_per_year['year'], y_above_pred, color='skyblue', linewidth=2, label='Linear Regression > 35 cm')
+plt.plot(days_per_year['year'], y_below_pred, color='salmon', linewidth=2, label='Linear Regression <= 35 cm')
+plt.xlabel('Year')
+plt.ylabel('Number of Days')
+plt.title('Linear Regression of Days with Snow Depth Greater than and Less Than or Equal to 35 cm')
+plt.legend()
+plt.xticks(rotation=45)
+plt.grid(axis='y', linestyle='--', linewidth=0.7)
+plt.tight_layout()
